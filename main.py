@@ -17,6 +17,7 @@ le nombre S d'agents identiques, et si S/T est plus petit que C (un seuil critiq
 Selon les paramètres (nombre d'agents de chaque couleur, taille de la grille, valeur de C), on observera différents comportements dynamiques. 
 On pourra notamment trouver des paramètres critiques de transition de phase caractérisant la ségrégation.
 """
+import threading
 from os.path import isfile, join
 
 # Library
@@ -28,6 +29,20 @@ import imageio
 from datetime import datetime
 import os
 import glob
+
+from concurrent.futures import ThreadPoolExecutor
+
+# Paramètres de la simulation
+
+SHAPE_GRILLE = (200, 200)
+N_BLEU, N_ROUGE = int(200*200*0.4), int(200*200*0.4)
+T = 1.25 / 8
+ITER_MAX = 1000
+
+# ---------------------------------
+
+count_images_saved = 0
+lock = threading.Lock()
 
 
 def create_folder(where, name_new_folder=None):
@@ -91,8 +106,9 @@ def placer_N_agents(grille, n, couleur):
 """# **IV-Tracer la grille**"""
 
 
-def create_frame(grille, figsize=(8, 8), plot_it=True, title=None, display_ticks=True, save_it=False, namefile=None,
+def create_frame(grille, figsize=(8, 8), plot_it=False, title=None, display_ticks=True, save_it=False, namefile=None,
                  dirpath=None):
+    global count_images_saved
     # creation d'une map colorée avec des valeurs discrètes
     cmap = colors.ListedColormap(['white', 'blue', "red"])
     # print(cmap.N)
@@ -100,8 +116,9 @@ def create_frame(grille, figsize=(8, 8), plot_it=True, title=None, display_ticks
     norm = colors.BoundaryNorm(bounds, cmap.N)
 
     fig, ax = plt.subplots(figsize=figsize)
+
     if title:
-        plt.title(title)
+        plt.title(title, fontsize=20)
     ax.imshow(grille, cmap=cmap, norm=norm)
 
     # définitions des axes (x,y)
@@ -124,7 +141,13 @@ def create_frame(grille, figsize=(8, 8), plot_it=True, title=None, display_ticks
 
         file_path = os.path.join(dirpath, namefile)
         fig.savefig(file_path)
-    plt.close()
+        fig.clf()
+        with lock:
+            count_images_saved += 1
+
+    plt.close(fig)
+    count_images_saved += 1
+
     return file_path if save_it and file_path else None
 
 
@@ -133,11 +156,16 @@ def create_frame(grille, figsize=(8, 8), plot_it=True, title=None, display_ticks
 
 # Fonction qui permet de trouver une case vide aléatoirement
 def case_vacante(grille):
+    indices = np.argwhere(grille == -1)
+    random_index = random.choice(indices)
+    k, l = tuple(random_index)
+    """
     k = np.random.randint(0, grille.shape[0])  # (k,l) : Valeurs random des coords d'une case vide
     l = np.random.randint(0, grille.shape[1])
     while grille[k][l] != -1:
         k = np.random.randint(0, grille.shape[0])
         l = np.random.randint(0, grille.shape[1])
+    """
     return k, l
 
 
@@ -278,19 +306,10 @@ def scan_agents(grille, T):
             # print(i,j)
             if (grille[i][j] != -1):
                 utility(grille, i, j, T)  # On vérifie la condition de satisfaction
-                # print(i,j)
-                # print(utility(grille,i,j))
-                if (utility(grille, i, j, T) == 0):  # Si la condition n'est pas satisfaite alors
+                if utility(grille, i, j, T) == 0:  # Si la condition n'est pas satisfaite alors
                     k, l = case_vacante(grille)  # On choisit une case vacante aléatoirement
                     grille[k][l] = grille[i][j]  # On pose l'agent sur la case vacante
                     grille[i][j] = -1  # Puis on libère la place à l'endroit où était initialement l'agent.
-                    # print(k,l,i,j)
-                    # print(utility(grille,k,l))
-
-
-"""# **Programme principal**
-
-"""
 
 
 def verif_satisfaction_all(grille, nb_agents_total, T):
@@ -307,7 +326,7 @@ def verif_satisfaction_all(grille, nb_agents_total, T):
         return False, cpt
 
 
-def plot_history_satisfaction(history, bleus, rouges, cv, T, save_it=True, namefile=""):
+def plot_history_satisfaction(history, bleus, rouges, cv, T,plot_it=True, save_it=True, namefile=None, dirpath=None):
     nb_agents_total = bleus + rouges
     pourcentages = np.array(
         history) / nb_agents_total * 100  # calcule du pourcentage d'agents satisfaits à chaque pas de temps en divisant le nombre d'agents satisfaits
@@ -317,7 +336,7 @@ def plot_history_satisfaction(history, bleus, rouges, cv, T, save_it=True, namef
     fig = plt.figure(figsize=(14, 6))  # Creation d'une figure de taille 14x6
     ax = fig.add_subplot(1, 1, 1)  # Ajout des axes
     plt.title(
-        f"Pourcentage d'agents satisfaits (Avec, T={T}), {bleus + rouges} agents (b={bleus}, r={rouges}) et {cv} cases vides")  # Titre
+        f"Pourcentage d'agents satisfaits (avec T={T}), {bleus + rouges} agents (b={bleus}, r={rouges}) et {cv} cases vides")  # Titre
 
     ax.set_yticks(np.arange(0, 101, 10 if pourcentages.max() > 20 else 1),
                   minor=True)  # Definit les graduations des ordonnées dans un intervalle entre 0 et 100 avec un pas de 10.
@@ -325,7 +344,7 @@ def plot_history_satisfaction(history, bleus, rouges, cv, T, save_it=True, namef
     ax.grid(which='major', alpha=0.6)
 
     # Tracer des points représentant le pourcentage d'agents satisfaits qui sont supérieurs ou égaux à 99 % (point rouge) et égaux à 100 % (point noir).
-    # ax.grid(linestyle="--") #Ajout d'une grille au tracer
+
     ax.plot(pourcentages, linewidth=5.0, c="purple", label='% satisfaction')
     p = 99
     ax.scatter([i for i in range(len(pourcentages)) if 100 > pourcentages[i] >= p],
@@ -337,15 +356,19 @@ def plot_history_satisfaction(history, bleus, rouges, cv, T, save_it=True, namef
 
     # Affichage du tracer et enregistrement sous la forme d'un fichier
     ax.legend()
-    plt.show()
+
+    if plot_it:
+        plt.show()
     if save_it and namefile:
         if not namefile.endswith(".png"):
             raise ValueError(f" {namefile} : Nom de fichier incorrecte")
-        fig.savefig(namefile)
-        print(f"{namefile} saved")
+        output_path = os.path.join(dirpath, namefile)
+        fig.savefig(output_path)
+        #print(f"> {output_path} saved")
 
 
-def launch_segregation_game(shape_grille=(10, 10), nb_agents_bleu=40, nb_agents_rouge=40, T=3 / 8, ITER_MAX=10000):
+def launch_segregation_game(shape_grille=(10, 10), nb_agents_bleu=40, nb_agents_rouge=40, T=3 / 8, ITER_MAX=10000,
+                            verbose=True):
     # Vérification des paramètres
     nb_agents_total = nb_agents_bleu + nb_agents_rouge
     grille_capacity = shape_grille[0] * shape_grille[1]
@@ -364,6 +387,7 @@ def launch_segregation_game(shape_grille=(10, 10), nb_agents_bleu=40, nb_agents_
     # Tracer de la grille finale (avec condition de satisfaction appliquée)
     ok, cpt_satisfaction = verif_satisfaction_all(grille, nb_agents_total, T)
     history_cpt_satisfaction = [cpt_satisfaction]
+
     while not ok and iter < ITER_MAX:
         scan_agents(grille, T)  # mouvements
         ok, cpt_satisfaction = verif_satisfaction_all(grille, nb_agents_total, T)
@@ -371,25 +395,32 @@ def launch_segregation_game(shape_grille=(10, 10), nb_agents_bleu=40, nb_agents_
         history_grille.append(grille.copy())
         history_cpt_satisfaction.append(cpt_satisfaction)
         iter += 1
+        if verbose and iter in [1, 10, 100, 500, 1000, 5000]:
+            print(f"i={iter} : {cpt_satisfaction / nb_agents_total :.1%} agents satisfaits")
     # Fin de la boucle
 
     return history_grille, history_cpt_satisfaction, iter, nb_agents_bleu, nb_agents_rouge, cases_vides
 
 
-def get_all_png_from(folder):  # using glob
-    return sorted(glob.glob(folder + "/*.png"))
+def get_all_frames_from(folder):  # using glob
+    return sorted(glob.glob(folder + "/i_*.png"))
 
 
-def generate_gif(frames_img_paths: list, gifname, dirpath, fps=5):
+def generate_gif(frames_img_paths: list, gifname, dirpath, fps=5,reduce_frames_by=1):
     if not gifname.endswith(".gif"):
         raise ValueError(f" {gifname} : Nom de fichier incorrecte")
+
+    #todo : reduce frames by
+    # select frames only each reduce_frames_by
+    frames_img_paths = frames_img_paths[::reduce_frames_by]
+
     images = []
     for filename in frames_img_paths:
         images.append(imageio.v2.imread(filename))
 
     gif_output_path = f"{dirpath}/{gifname}"
     imageio.mimsave(gif_output_path, images, fps=fps)
-    print(f"{gif_output_path} saved")
+    return gif_output_path
 
 
 def generate_png_file(grille, cpt_satisfaction, i, iters_done, nb_agents_total, dirpath):
@@ -397,51 +428,82 @@ def generate_png_file(grille, cpt_satisfaction, i, iters_done, nb_agents_total, 
 
     # add zeros to the left of the number
     namefile = f"i_{str(i).zfill(len(str(iters_done)))}.png"
-    create_frame(grille, title=f"Iteration {i} : {pourcentage_satisfaction : .2f} % satisfaction",
-                 namefile=namefile, dirpath=dirpath, save_it=True, plot_it=False)
-    if i % 100 == 0 or i in [0, 10, 50]:
-        print(f"> {namefile} saved.")
+    create_frame(grille, title=f"iteration {i} : {pourcentage_satisfaction : .2f} % satisfaction",
+                 namefile=namefile, dirpath=dirpath, save_it=True, plot_it=False, display_ticks=False)
+    # if i % 100 == 0 or i in [0, 10, 50]:
+    #    print(f"> {namefile} saved.")
 
+# display loading bar
+def display_loading_bar(iter, iter_max, bar_length=20,the_end=False):
+    percent = float(iter) / iter_max
+    arrow = '=' * int(round(percent * bar_length) - 1) + '>'
+    spaces = ' ' * (bar_length - len(arrow))
+
+    print('> [{}] {}%'.format(arrow + spaces, int(round(percent * 100))), end='\r' if not the_end else '\n')
 
 def main():
+    global count_images_saved
     print(">>> Start...")
-    SHAPE_GRILLE = (50, 50)
-    N_BLEU, N_ROUGE = 1150, 1150
-    T = 3 / 8
-    ITER_MAX = 1000
 
     history_grille, history_cpt_satisfaction, final_iter, nb_agents_bleu, nb_agents_rouge, cases_vides = launch_segregation_game(
         shape_grille=SHAPE_GRILLE,
         nb_agents_bleu=N_BLEU,
         nb_agents_rouge=N_ROUGE, T=T,
         ITER_MAX=ITER_MAX)
-    print(">>> End.")
+
     print(f"> Iterations : {final_iter}")
     # Affiches des grilles aux itérations spécifiés
-    primary_params_str = f"({SHAPE_GRILLE[0]}x{SHAPE_GRILLE[1]}), {N_BLEU + N_ROUGE} agents (b={N_BLEU}, r={N_ROUGE}), T={T:.2f}"
+    primary_params_str = f"({SHAPE_GRILLE[0]}x{SHAPE_GRILLE[1]}), CV={cases_vides} (b={N_BLEU}, r={N_ROUGE}), T={T:.2f}"
     start_dirname = f"{primary_params_str} {datetime.now().strftime('%d-%m-%Y %H%M')}"
 
     # Création du dossier de sauvegarde
 
     frames_dirpath = create_folder(create_folder("backups", create_folder("frames")), start_dirname)
-    print(f"> {frames_dirpath}")
-    for i in range(len(history_grille)):
+    print(f"> dir: {frames_dirpath}")
+
+    # Sauvegarde des grilles sous forme d'images
+
+    """n_workers = 8
+
+    args = ((history_grille[i], history_cpt_satisfaction[i], i, final_iter,
+             nb_agents_bleu + nb_agents_rouge, frames_dirpath) for i in range(len(history_grille)))
+    with ThreadPoolExecutor(max_workers=min(n_workers, final_iter)) as executor:
+        results = executor.map(lambda p: generate_png_file(*p), args)"""
+
+    len_history_grille = len(history_grille)
+    for i in range(len_history_grille):
         generate_png_file(history_grille[i], history_cpt_satisfaction[i], i, final_iter,
                           nb_agents_bleu + nb_agents_rouge, frames_dirpath)
+        # display loading
+        if i % 100 == 0 or i in [0, 10, 50]:
+            display_loading_bar(i, len_history_grille)
 
+
+
+
+    # plot satisfaction
     plot_history_satisfaction(history_cpt_satisfaction, nb_agents_bleu, nb_agents_rouge, cases_vides, T=T,
-                              save_it=False, namefile=f"{start_dirname} courbe de satisfaction.png")
+                              save_it=True, namefile=f"satisfaction_curve.png", dirpath=frames_dirpath)
+    display_loading_bar(i + 1, len_history_grille, the_end=True)
 
-    images_path = get_all_png_from(frames_dirpath)
-    first_image = images_path[0]
-    last_image = images_path[-1]
-    # add at the beginning the first
-    many = 10
-    images_path = [first_image] * many + images_path
-    # add at the end the last
-    images_path = images_path + [last_image] * many
+    frames_path = get_all_frames_from(frames_dirpath)
+    if not len(frames_path) > 0:
+        raise ValueError(f"Pas de frames trouvées dans le dossier {frames_dirpath}")
+
+    # Création du gif !
+    fps = len(history_grille) // 10
+    many = fps * 3
+
+    first_image = frames_path[0]
+    last_image = frames_path[-1]
+
+    frames_path = [first_image] * many + frames_path  # add at the beginning the first
+    frames_path = frames_path + [last_image] * many  # add at the end the last
     gifs_dirpath = create_folder("backups", create_folder("gifs"))
-    generate_gif(images_path, f"{start_dirname}.gif", gifs_dirpath, fps=5)
+
+    gif_output_path = generate_gif(frames_path, f"{start_dirname} i={final_iter}_{ITER_MAX}.gif", gifs_dirpath, fps=fps)
+    print(f"~~> {gif_output_path} saved")
+    print(">>> End.")
 
 
 if __name__ == '__main__':

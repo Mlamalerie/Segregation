@@ -34,10 +34,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 # Paramètres de la simulation
 
-SHAPE_GRILLE = (200, 200)
-N_BLEU, N_ROUGE = int(200*200*0.4), int(200*200*0.4)
-T = 1.25 / 8
-ITER_MAX = 1000
+SHAPE_GRILLE = (50, 50)
+SIZE_GRILLE = SHAPE_GRILLE[0] * SHAPE_GRILLE[1]
+N_BLEU, N_ROUGE = int(SIZE_GRILLE * 0.45), int(SIZE_GRILLE * 0.45)
+T = 0.25
+ITER_MAX = 50
 
 # ---------------------------------
 
@@ -80,6 +81,16 @@ def affiche_grille_2D(grille):
 """# **III - Placer agents sur la grille de façon aléatoire.**"""
 
 
+def cases_vacantes(grille):
+    indices = np.argwhere(grille == -1)
+    return list(indices)
+
+
+def get_case_vacante(grille):
+    random_index = random.choice(cases_vacantes(grille))
+    return tuple(random_index)
+
+
 # Fonction permettant de placer un agent
 def placer_agent(grille, i, j, couleur):
     if couleur == "b":
@@ -90,15 +101,11 @@ def placer_agent(grille, i, j, couleur):
 
 # Fonction permettant de placer N agents
 def placer_N_agents(grille, n, couleur):
-    for k in range(n):
-        i_agent = np.random.randint(0, grille.shape[0])  # Valeurs random des coords (i,j)
-        j_agent = np.random.randint(0, grille.shape[1])
-
-        while grille[i_agent][
-            j_agent] != -1:  # Tant que case différente de vide (soit case occupée) on réitère les coords...
-            i_agent = np.random.randint(0, grille.shape[0])
-            j_agent = np.random.randint(0, grille.shape[1])
-
+    vacantes = cases_vacantes(grille)
+    # shuffle list
+    random.shuffle(vacantes)
+    for case in vacantes[:n]:
+        i_agent, j_agent = case
         placer_agent(grille, i_agent, j_agent,
                      couleur)  # Sinon si la case est vide alors appelle de la f* placer 1 agent pour placer l'agent.
 
@@ -155,136 +162,39 @@ def create_frame(grille, figsize=(8, 8), plot_it=False, title=None, display_tick
 
 
 # Fonction qui permet de trouver une case vide aléatoirement
-def case_vacante(grille):
-    indices = np.argwhere(grille == -1)
-    random_index = random.choice(indices)
-    k, l = tuple(random_index)
-    """
-    k = np.random.randint(0, grille.shape[0])  # (k,l) : Valeurs random des coords d'une case vide
-    l = np.random.randint(0, grille.shape[1])
-    while grille[k][l] != -1:
-        k = np.random.randint(0, grille.shape[0])
-        l = np.random.randint(0, grille.shape[1])
-    """
-    return k, l
+
+
+def case_occupees(grille, couleur=None):
+    if not couleur:
+        return np.argwhere(grille != -1)
+    if couleur == "b":
+        return np.argwhere(grille == 1)
+    elif couleur == "r":
+        return np.argwhere(grille == 2)
+    else:
+        return np.argwhere(grille != -1)
 
 
 # Fonction qui permet de trouver une case avec un agent bleu ou rouge aléatoirement
-def trouver_agent_alea(grille):
-    i_agent = np.random.randint(0, grille.shape[0])  # (i_agent,j_agent) : Valeurs random des coords d'une case vide
-    j_agent = np.random.randint(0, grille.shape[1])
-    while grille[i_agent][j_agent] == -1:
-        i_agent = np.random.randint(0, grille.shape[0])
-        j_agent = np.random.randint(0, grille.shape[1])
-    return i_agent, j_agent
+
+def get_case_avec_agent(grille, couleur=None):
+    random_index = random.choice(case_occupees(grille, couleur))
+    return tuple(random_index)
 
 
 # Fonction qui compte le nombre de voisins identiques et total
 def compter_nb_voisins(grille, i_agent, j_agent):
-    couleur_agent_X = grille[i_agent][j_agent]  # Couleur agent correspondant aux coords (i_agent, j_agent)
-    Nt = 0  # nb voisin total
-    Ns = 0  # nb voisin identique
+    n, m = grille.shape
+    nb_voisins_identiques = 0  # Ns
+    nb_voisins_total = 0  # Nt
+    for i in range(i_agent - 1, i_agent + 2):
+        for j in range(j_agent - 1, j_agent + 2):
+            if i >= 0 and i < n and j >= 0 and j < m and (i != i_agent or j != j_agent):
+                if grille[i][j] == grille[i_agent][j_agent]:
+                    nb_voisins_identiques += 1
+                nb_voisins_total += 1
 
-    # haut
-    if i_agent - 1 > 0:  # condition limite du haut de la grille
-        voisin = grille[i_agent - 1][j_agent]
-        if voisin != -1:
-            Nt += 1
-
-        if couleur_agent_X == 1:
-            if voisin == 1:
-                Ns += 1
-        elif couleur_agent_X == 2:
-            if voisin == 2:
-                Ns += 1
-    # bas
-    if i_agent + 1 < grille.shape[0]:  # condition limite du bas de la grille
-        voisin = grille[i_agent + 1][j_agent]
-        if voisin != -1:
-            Nt += 1
-
-        if couleur_agent_X == 1:
-            if voisin == 1:
-                Ns += 1
-        elif couleur_agent_X == 2:
-            if voisin == 2:
-                Ns += 1
-
-    # Les diagonales
-    # droite 
-    if j_agent + 1 < grille.shape[1]:  # condition limite du bord droit de la grille
-        voisin = grille[i_agent][j_agent + 1]
-        if voisin != -1:
-            Nt += 1
-
-        if couleur_agent_X == 1:
-            if voisin == 1:
-                Ns += 1
-        elif couleur_agent_X == 2:
-            if voisin == 2:
-                Ns += 1
-    # gauche
-    if j_agent - 1 > 0:  # condition limite du bord gauche de la grille
-        voisin = grille[i_agent][j_agent - 1]
-        if voisin != -1:
-            Nt += 1
-
-        if couleur_agent_X == 1:
-            if voisin == 1:
-                Ns += 1
-        elif couleur_agent_X == 2:
-            if voisin == 2:
-                Ns += 1
-    # no
-    if i_agent - 1 > 0 and j_agent - 1 > 0:  # À partir de là, "les conditions limite des diagonales de la grille"
-        voisin = grille[i_agent - 1][j_agent - 1]
-        if voisin != -1:
-            Nt += 1
-
-        if couleur_agent_X == 1:
-            if voisin == 1:
-                Ns += 1
-        elif couleur_agent_X == 2:
-            if voisin == 2:
-                Ns += 1
-    # ne 
-    if i_agent - 1 > 0 and j_agent + 1 < grille.shape[1]:
-        voisin = grille[i_agent - 1][j_agent + 1]
-        if voisin != -1:
-            Nt += 1
-
-        if couleur_agent_X == 1:
-            if voisin == 1:
-                Ns += 1
-        elif couleur_agent_X == 2:
-            if voisin == 2:
-                Ns += 1
-    # so 
-    if i_agent + 1 < grille.shape[0] and j_agent - 1 > 0:
-        voisin = grille[i_agent + 1][j_agent - 1]
-        if voisin != -1:
-            Nt += 1
-
-        if couleur_agent_X == 1:
-            if voisin == 1:
-                Ns += 1
-        elif couleur_agent_X == 2:
-            if voisin == 2:
-                Ns += 1
-    # se
-    if i_agent + 1 < grille.shape[0] and j_agent + 1 < grille.shape[1]:
-        voisin = grille[i_agent + 1][j_agent + 1]
-        if voisin != -1:
-            Nt += 1
-
-        if couleur_agent_X == 1:
-            if voisin == 1:
-                Ns += 1
-        elif couleur_agent_X == 2:
-            if voisin == 2:
-                Ns += 1
-
-    return Ns, Nt
+    return nb_voisins_identiques, nb_voisins_total
 
 
 """# **VI-Définition de l'utilité et condition de satisafaction des agents**"""
@@ -293,40 +203,35 @@ def compter_nb_voisins(grille, i_agent, j_agent):
 def utility(grille, i_agent, j_agent, T):
     Ns, Nt = compter_nb_voisins(grille, i_agent, j_agent)  # On compte son nombre de voisins (semblable, total)
     Nd = Nt - Ns  # Nombre agent différent
-
     if (Nd <= T * Nt):  # Si la condition de satisfaction est respectée, utilité C=1.
         return 1
     else:  # Sinon utilité C=0.
         return 0
 
 
-def scan_agents(grille, T):
+def move_agents(grille, T):
     for i in range(grille.shape[0]):  # On parcourt la grille et on scan (pointe) un agent
         for j in range(grille.shape[1]):
-            # print(i,j)
             if (grille[i][j] != -1):
-                utility(grille, i, j, T)  # On vérifie la condition de satisfaction
                 if utility(grille, i, j, T) == 0:  # Si la condition n'est pas satisfaite alors
-                    k, l = case_vacante(grille)  # On choisit une case vacante aléatoirement
+                    k, l = get_case_vacante(grille)  # On choisit une case vacante aléatoirement
                     grille[k][l] = grille[i][j]  # On pose l'agent sur la case vacante
-                    grille[i][j] = -1  # Puis on libère la place à l'endroit où était initialement l'agent.
+                    grille[i][j] = -1
 
 
 def verif_satisfaction_all(grille, nb_agents_total, T):
     cpt = 0
-    for i in range(grille.shape[0]):
-        for j in range(grille.shape[1]):
-            if (grille[i][j] != -1):
-                if (utility(grille, i, j, T) == 1):
-                    cpt += 1
-    # print("verif: ",cpt,nb_agents_total)
+    agents = case_occupees(grille)
+    for i, j in agents:
+        cpt += utility(grille, i, j, T)
+
     if (cpt == nb_agents_total):
         return True, cpt
     else:
         return False, cpt
 
 
-def plot_history_satisfaction(history, bleus, rouges, cv, T,plot_it=True, save_it=True, namefile=None, dirpath=None):
+def plot_history_satisfaction(history, bleus, rouges, cv, T, plot_it=True, save_it=True, namefile=None, dirpath=None):
     nb_agents_total = bleus + rouges
     pourcentages = np.array(
         history) / nb_agents_total * 100  # calcule du pourcentage d'agents satisfaits à chaque pas de temps en divisant le nombre d'agents satisfaits
@@ -364,7 +269,7 @@ def plot_history_satisfaction(history, bleus, rouges, cv, T,plot_it=True, save_i
             raise ValueError(f" {namefile} : Nom de fichier incorrecte")
         output_path = os.path.join(dirpath, namefile)
         fig.savefig(output_path)
-        #print(f"> {output_path} saved")
+        # print(f"> {output_path} saved")
 
 
 def launch_segregation_game(shape_grille=(10, 10), nb_agents_bleu=40, nb_agents_rouge=40, T=3 / 8, ITER_MAX=10000,
@@ -381,6 +286,9 @@ def launch_segregation_game(shape_grille=(10, 10), nb_agents_bleu=40, nb_agents_
     grille = init_grille_2D(*shape_grille)
     placer_N_agents(grille, nb_agents_bleu, "b")  # placer agent bleu
     placer_N_agents(grille, nb_agents_rouge, "r")  # placer agent rouge
+    if verbose:
+        print("Grille init", grille.shape)
+
     history_grille = [grille.copy()]
     iter = 0
 
@@ -389,7 +297,7 @@ def launch_segregation_game(shape_grille=(10, 10), nb_agents_bleu=40, nb_agents_
     history_cpt_satisfaction = [cpt_satisfaction]
 
     while not ok and iter < ITER_MAX:
-        scan_agents(grille, T)  # mouvements
+        move_agents(grille, T)  # mouvements
         ok, cpt_satisfaction = verif_satisfaction_all(grille, nb_agents_total, T)
         # save historique
         history_grille.append(grille.copy())
@@ -406,16 +314,22 @@ def get_all_frames_from(folder):  # using glob
     return sorted(glob.glob(folder + "/i_*.png"))
 
 
-def generate_gif(frames_img_paths: list, gifname, dirpath, fps=5,reduce_frames_by=1):
+def generate_gif(frames_img_paths: list, gifname, dirpath, fps=5, reduce_frames_by=1):
     if not gifname.endswith(".gif"):
         raise ValueError(f" {gifname} : Nom de fichier incorrecte")
 
-    #todo : reduce frames by
-    # select frames only each reduce_frames_by
-    frames_img_paths = frames_img_paths[::reduce_frames_by]
+    # Création du gif !
+    fps = min(len(frames_img_paths) // 10, 70)
+    many = fps * 3
+
+    first_image = frames_img_paths[0]
+    last_image = frames_img_paths[-1]
+    middle_images = frames_img_paths[1:-1:reduce_frames_by]
+
+    new_frames_path = [first_image] * many + middle_images + [last_image] * many
 
     images = []
-    for filename in frames_img_paths:
+    for filename in new_frames_path:
         images.append(imageio.v2.imread(filename))
 
     gif_output_path = f"{dirpath}/{gifname}"
@@ -433,13 +347,15 @@ def generate_png_file(grille, cpt_satisfaction, i, iters_done, nb_agents_total, 
     # if i % 100 == 0 or i in [0, 10, 50]:
     #    print(f"> {namefile} saved.")
 
+
 # display loading bar
-def display_loading_bar(iter, iter_max, bar_length=20,the_end=False):
+def display_loading_bar(iter, iter_max, bar_length=20, the_end=False):
     percent = float(iter) / iter_max
     arrow = '=' * int(round(percent * bar_length) - 1) + '>'
     spaces = ' ' * (bar_length - len(arrow))
 
     print('> [{}] {}%'.format(arrow + spaces, int(round(percent * 100))), end='\r' if not the_end else '\n')
+
 
 def main():
     global count_images_saved
@@ -478,9 +394,6 @@ def main():
         if i % 100 == 0 or i in [0, 10, 50]:
             display_loading_bar(i, len_history_grille)
 
-
-
-
     # plot satisfaction
     plot_history_satisfaction(history_cpt_satisfaction, nb_agents_bleu, nb_agents_rouge, cases_vides, T=T,
                               save_it=True, namefile=f"satisfaction_curve.png", dirpath=frames_dirpath)
@@ -490,18 +403,11 @@ def main():
     if not len(frames_path) > 0:
         raise ValueError(f"Pas de frames trouvées dans le dossier {frames_dirpath}")
 
-    # Création du gif !
-    fps = len(history_grille) // 10
-    many = fps * 3
-
-    first_image = frames_path[0]
-    last_image = frames_path[-1]
-
-    frames_path = [first_image] * many + frames_path  # add at the beginning the first
-    frames_path = frames_path + [last_image] * many  # add at the end the last
     gifs_dirpath = create_folder("backups", create_folder("gifs"))
 
-    gif_output_path = generate_gif(frames_path, f"{start_dirname} i={final_iter}_{ITER_MAX}.gif", gifs_dirpath, fps=fps)
+    divide_by = 1 if len(frames_path) < 200 else 2
+
+    gif_output_path = generate_gif(frames_path, f"{start_dirname} i={final_iter}_{ITER_MAX}.gif", gifs_dirpath)
     print(f"~~> {gif_output_path} saved")
     print(">>> End.")
 

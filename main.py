@@ -57,8 +57,7 @@ def create_folder(where, name_new_folder=None):
 
 
 def init_grille_2D(n, m):
-    grille_2D = np.ones((n, m)) * (-1)  # Grille 2D de cases vides
-    return grille_2D
+    return np.ones((n, m)) * (-1)
 
 
 """# **II- Affichage de la grille 2D**"""
@@ -203,10 +202,7 @@ def compter_nb_voisins(grille, i_agent, j_agent):
 def utility(grille, i_agent, j_agent, T):
     Ns, Nt = compter_nb_voisins(grille, i_agent, j_agent)  # On compte son nombre de voisins (semblable, total)
     Nd = Nt - Ns  # Nombre agent différent
-    if (Nd <= T * Nt):  # Si la condition de satisfaction est respectée, utilité C=1.
-        return 1
-    else:  # Sinon utilité C=0.
-        return 0
+    return 1 if (Nd <= T * Nt) else 0
 
 
 def move_agents(grille, T):
@@ -220,15 +216,9 @@ def move_agents(grille, T):
 
 
 def verif_satisfaction_all(grille, nb_agents_total, T):
-    cpt = 0
     agents = case_occupees(grille)
-    for i, j in agents:
-        cpt += utility(grille, i, j, T)
-
-    if (cpt == nb_agents_total):
-        return True, cpt
-    else:
-        return False, cpt
+    cpt = sum(utility(grille, i, j, T) for i, j in agents)
+    return (True, cpt) if (cpt == nb_agents_total) else (False, cpt)
 
 
 def plot_history_satisfaction(history, bleus, rouges, cv, T, plot_it=True, save_it=True, namefile=None, dirpath=None):
@@ -303,7 +293,7 @@ def launch_segregation_game(shape_grille=(10, 10), nb_agents_bleu=40, nb_agents_
         history_grille.append(grille.copy())
         history_cpt_satisfaction.append(cpt_satisfaction)
         iter += 1
-        if verbose and iter in [1, 10, 100, 500, 1000, 5000]:
+        if verbose and iter in {1, 10, 100, 500, 1000, 5000}:
             print(f"i={iter} : {cpt_satisfaction / nb_agents_total :.1%} agents satisfaits")
     # Fin de la boucle
 
@@ -311,7 +301,7 @@ def launch_segregation_game(shape_grille=(10, 10), nb_agents_bleu=40, nb_agents_
 
 
 def get_all_frames_from(folder):  # using glob
-    return sorted(glob.glob(folder + "/i_*.png"))
+    return sorted(glob.glob(f"{folder}/i_*.png"))
 
 
 def generate_gif(frames_img_paths: list, gifname, dirpath, fps=5, reduce_frames_by=1):
@@ -328,10 +318,7 @@ def generate_gif(frames_img_paths: list, gifname, dirpath, fps=5, reduce_frames_
 
     new_frames_path = [first_image] * many + middle_images + [last_image] * many
 
-    images = []
-    for filename in new_frames_path:
-        images.append(imageio.v2.imread(filename))
-
+    images = [imageio.v2.imread(filename) for filename in new_frames_path]
     gif_output_path = f"{dirpath}/{gifname}"
     imageio.mimsave(gif_output_path, images, fps=fps)
     return gif_output_path
@@ -354,7 +341,10 @@ def display_loading_bar(iter, iter_max, bar_length=20, the_end=False):
     arrow = '=' * int(round(percent * bar_length) - 1) + '>'
     spaces = ' ' * (bar_length - len(arrow))
 
-    print('> [{}] {}%'.format(arrow + spaces, int(round(percent * 100))), end='\r' if not the_end else '\n')
+    print(
+        f'> [{arrow + spaces}] {int(round(percent * 100))}%',
+        end='\r' if not the_end else '\n',
+    )
 
 
 def main():
@@ -395,12 +385,20 @@ def main():
             display_loading_bar(i, len_history_grille)
 
     # plot satisfaction
-    plot_history_satisfaction(history_cpt_satisfaction, nb_agents_bleu, nb_agents_rouge, cases_vides, T=T,
-                              save_it=True, namefile=f"satisfaction_curve.png", dirpath=frames_dirpath)
+    plot_history_satisfaction(
+        history_cpt_satisfaction,
+        nb_agents_bleu,
+        nb_agents_rouge,
+        cases_vides,
+        T=T,
+        save_it=True,
+        namefile="satisfaction_curve.png",
+        dirpath=frames_dirpath,
+    )
     display_loading_bar(i + 1, len_history_grille, the_end=True)
 
     frames_path = get_all_frames_from(frames_dirpath)
-    if not len(frames_path) > 0:
+    if len(frames_path) <= 0:
         raise ValueError(f"Pas de frames trouvées dans le dossier {frames_dirpath}")
 
     gifs_dirpath = create_folder("backups", create_folder("gifs"))
